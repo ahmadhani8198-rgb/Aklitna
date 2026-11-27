@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1D3B33">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>أكلتنا</title>
+<style>
+:root{--bg:#EAF1EC;--card:#fff;--ink:#1D2B26;--mute:#5E7068;--green:#1D3B33;--red:#B3263E;--gold:#E9A61A;--line:#CFDCD4}
+@media(prefers-color-scheme:dark){:root{--bg:#14211C;--card:#1E2F28;--ink:#EAF1EC;--mute:#9DB1A7;--green:#0E1A16;--line:#33493F}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,"Segoe UI",Tahoma,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+header{background:var(--green);color:#fff;padding:22px 20px 26px;border-radius:0 0 28px 28px}
+h1{margin:0;font-size:28px}
+header p{margin:2px 0 0;opacity:.8;font-size:14px}
+main{max-width:560px;margin:0 auto;padding:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;margin-bottom:16px}
+h2{font-size:17px;margin:0 0 10px}
+.when{color:var(--mute);font-size:15px}
+.meal{font-size:34px;font-weight:700;margin:6px 0 14px;color:var(--red)}
+@media(prefers-color-scheme:dark){.meal{color:var(--gold)}}
+button{font:inherit;border:0;border-radius:14px;padding:13px 18px;cursor:pointer;background:var(--red);color:#fff;font-weight:700}
+button.big{width:100%;font-size:20px;padding:18px}
+button.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.note{color:var(--mute);font-size:14px;margin:10px 0 0}
+.row{display:flex;gap:8px}
+input,select,textarea{font:inherit;width:100%;padding:12px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink)}
+ul{list-style:none;margin:0;padding:0}
+li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--line)}
+li:last-child{border:0}
+li button{padding:6px 12px;background:transparent;color:var(--mute);border:1px solid var(--line);font-weight:400}
+.reason{font-size:13px;color:var(--mute)}
+dialog{border:0;border-radius:20px;padding:20px;width:min(92vw,420px);background:var(--card);color:var(--ink)}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+dialog label{display:block;margin-bottom:6px;font-weight:700}
+.acts{display:flex;gap:8px;margin-top:14px}
+.acts button{flex:1}
+</style>
+</head>
+<body>
+<header><h1>أكلتنا</h1><p>نقرة وحدة وبنعرف شو نطبخ</p></header>
+<main>
+ <section class="card" id="pickCard">
+  <h2 id="pickTitle"></h2>
+  <div class="when" id="when"></div>
+  <div class="meal" id="meal"></div>
+  <button class="big" id="pickBtn">حدّد الأكلة</button>
+  <button class="ghost" id="rerollBtn" style="width:100%;margin-top:10px" hidden>تغيير الأكلة (ظرف قهري)</button>
+  <p class="note" id="note"></p>
+ </section>
+ <section class="card">
+  <h2>الأكلات الجاية</h2>
+  <ul id="upcoming"></ul>
+ </section>
+ <section class="card">
+  <h2>أكلاتنا المفضلة (<span id="count">0</span>)</h2>
+  <form id="addForm" class="row" style="margin-bottom:8px"><input id="newFood" placeholder="مثال: مقلوبة" required autocomplete="off"><button type="submit">إضافة</button></form>
+  <ul id="foods"></ul>
+ </section>
+</main>
+<dialog id="dlg">
+ <form method="dialog" id="dlgForm">
+  <label for="reasonSel">شو السبب القهري؟</label>
+  <select id="reasonSel" required>
+   <option value="">اختار السبب…</option>
+   <option>ضيوف غير متوقعين</option>
+   <option>مرض أو تعب شديد</option>
+   <option>المكونات غير متوفرة</option>
+   <option>انقطاع غاز أو كهربا</option>
+   <option>ظرف طارئ أو سفر</option>
+   <option value="other">سبب ثاني</option>
+  </select>
+  <textarea id="reasonTxt" rows="2" placeholder="اكتب السبب" hidden style="margin-top:8px"></textarea>
+  <div class="acts"><button type="submit" id="okBtn">أكّد التغيير</button><button type="button" class="ghost" id="cancelBtn">إلغاء</button></div>
+ </form>
+</dialog>
+<script>
+const K='aklatna-v1';
+let S;
+try{S=JSON.parse(localStorage.getItem(K))}catch(e){}
+S=S||{foods:[],plan:{},lastPress:''};
+const save=()=>{try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}};
+const $=id=>document.getElementById(id);
+const key=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const dayName=d=>d.toLocaleDateString('ar',{weekday:'long',day:'numeric',month:'long'});
+const now=()=>{const t=new Date();return new Date(t.getFullYear(),t.getMonth(),t.getDate())};
+const addDays=(d,n)=>new Date(d.getFullYear(),d.getMonth(),d.getDate()+n);
+function pick(exclude){
+  const all=S.foods.filter(f=>f!==exclude);
+  if(!all.length)return exclude||null;
+  const recent=Object.keys(S.plan).sort().reverse().slice(0,Math.min(5,S.foods.length-1)).map(k=>S.plan[k].food);
+  const pool=all.filter(f=>!recent.includes(f));
+  const src=pool.length?pool:all;
+  return src[Math.floor(Math.random()*src.length)];
+}
+function li(text,sub,btn){
+  const l=document.createElement('li'),d=document.createElement('div');
+  d.textContent=text;
+  if(sub){const s=document.createElement('div');s.className='reason';s.textContent=sub;d.append(s)}
+  l.append(d);if(btn)l.append(btn);return l;
+}
+function render(){
+  const t=now(),tk=key(t),target=addDays(t,1),gk=key(target),p=S.plan[gk];
+  const usedToday=S.lastPress===tk;
+  $('pickTitle').textContent='أكلة '+dayName(target);
+  $('meal').textContent=p?p.food:'—';
+  $('when').textContent=p?'تم التحديد':'لسا ما انحددت';
+  $('pickBtn').disabled=usedToday||S.foods.length<1;
+  $('pickBtn').hidden=!!p&&usedToday;
+  $('rerollBtn').hidden=!(p&&usedToday)||S.foods.length<2;
+  $('note').textContent=S.foods.length<1?'ضيفوا أكلاتكم المفضلة تحت أول.':usedToday?'استخدمت محاولة اليوم. بتقدر تحدد من جديد بكرة.':'معك محاولة وحدة اليوم.';
+  const up=$('upcoming');up.replaceChildren();
+  const keys=Object.keys(S.plan).filter(k=>k>=tk).sort();
+  if(!keys.length){up.append(li('ما في أكلات محددة لسا'))}
+  keys.forEach(k=>{const [y,m,dd]=k.split('-').map(Number);const e=S.plan[k];
+    up.append(li(e.food+' — '+dayName(new Date(y,m-1,dd)),e.changes&&e.changes.length?'تغيّرت: '+e.changes.map(c=>c.from+' ('+c.reason+')').join('، '):''))});
+  $('count').textContent=S.foods.length;
+  const fl=$('foods');fl.replaceChildren();
+  S.foods.forEach(f=>{const b=document.createElement('button');b.type='button';b.textContent='حذف';b.onclick=()=>{S.foods=S.foods.filter(x=>x!==f);save();render()};fl.append(li(f,'',b))});
+}
+$('pickBtn').onclick=()=>{
+  const t=now();if(S.lastPress===key(t))return;
+  const f=pick();if(!f)return;
+  S.plan[key(addDays(t,1))]={food:f,pressedOn:key(t),changes:[]};
+  S.lastPress=key(t);save();render();
+};
+$('rerollBtn').onclick=()=>{$('reasonSel').value='';$('reasonTxt').hidden=true;$('reasonTxt').value='';$('dlg').showModal()};
+$('cancelBtn').onclick=()=>$('dlg').close();
+$('reasonSel').onchange=e=>{$('reasonTxt').hidden=e.target.value!=='other';$('reasonTxt').required=e.target.value==='other'};
+$('dlgForm').onsubmit=e=>{
+  const sel=$('reasonSel').value;if(!sel)return;
+  const reason=sel==='other'?$('reasonTxt').value.trim():sel;if(!reason)return;
+  const gk=key(addDays(now(),1)),p=S.plan[gk];if(!p)return;
+  const nf=pick(p.food);
+  p.changes=(p.changes||[]).concat({from:p.food,reason,on:key(now())});
+  p.food=nf;save();render();
+};
+$('addForm').onsubmit=e=>{e.preventDefault();const v=$('newFood').value.trim();
+  if(v&&!S.foods.includes(v)){S.foods.push(v);save()}$('newFood').value='';render()};
+render();
+if('serviceWorker'in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+</script>
+</body>
+</html>
